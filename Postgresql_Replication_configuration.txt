@@ -1,0 +1,84 @@
+on Master:
+==========
+1) Create user if not exists for replication privilege
+
+postgres=# create user repuser encrypted password 'repuser1234' replication;
+CREATE ROLE
+
+2) Append the below line to $PGDATA/pg_hba.conf if not present already
+
+
+host    replication     repuser         192.168.78.134/24         md5
+
+3) Check the below postgres parameters on master
+
+postgres=# show wal_level;
+ wal_level
+-----------
+ replica
+(1 row)
+
+postgres=# show max_wal_senders ;
+ max_wal_senders
+-----------------
+ 10
+(1 row)
+
+postgres=# show listen_addresses ;
+ listen_addresses
+------------------
+ *
+(1 row)
+
+postgres=# SHOW wal_keep_size;
+
+ wal_keep_size
+---------------
+ 512MB
+(1 row)
+
+
+4) Once we are done with the changes make sure our master is restarted
+
+sudo systemctl restart postgresql
+
+On Slave:
+=========
+
+check if the version is matching on master and slave.
+
+Also check for the tablespace mapping between the master and slave. Make sure the tablespace directories in master are also present on the slave. If not present, please create accordingly else use --tablespace-mapping in basebackup.
+
+Run the below command to take basebackup of the master and create a recovery.conf or recovery.signal
+
+nohup /usr/pgsql-16/bin/pg_basebackup -v -h 192.168.78.133 -c fast -U repuser -p 5432 -D /data/pgdata -Fp -Xs -P -R >> /pgbackup/basebackup.log
+
+Enter repuser password: repuser1234
+
+once the process completes
+Please check the log - /pgbackup/basebackup.log
+If there are no issues, please check the below command on slave
+
+select pg_is_in_recovery();
+It should show 't'
+
+then check the below command on master
+select * from pg_stat_replication;
+
+
+create table in primary and test it.==============================
+
+create database testdb;
+
+\c testdb
+
+CREATE TABLE number_test (
+    id SERIAL PRIMARY KEY,
+    name TEXT,
+    created_at TIMESTAMP DEFAULT now()
+);
+
+
+INSERT INTO number_test (name)
+SELECT 'User_' || g
+FROM generate_series(1, 10000000) AS g;
